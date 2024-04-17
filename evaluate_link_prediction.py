@@ -8,7 +8,6 @@ from tqdm import tqdm
 import torch.nn as nn
 
 from models.TGAT import TGAT
-from models.MemoryModel import MemoryModel, compute_src_dst_node_time_shifts
 from models.GraphMixer import GraphMixer
 
 from models.modules import MergeLayer
