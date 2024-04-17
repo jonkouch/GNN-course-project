@@ -2,7 +2,7 @@ import random
 import torch
 import torch.nn as nn
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import os
 
 from utils.DataLoader import Data
@@ -66,6 +66,7 @@ def create_optimizer(model: nn.Module, optimizer_name: str, learning_rate: float
     else:
         raise ValueError(f"Wrong value for optimizer {optimizer_name}!")
     
+    return optimizer
     
 class NeighborSampler:
 

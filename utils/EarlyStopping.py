@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-
+from tqdm import tqdm
 
 class EarlyStopping(object):
 
@@ -64,6 +64,7 @@ class EarlyStopping(object):
         :param model: nn.Module
         :return:
         """
+        tqdm.write(f"save model {self.save_model_path}")
         torch.save(model.state_dict(), self.save_model_path)
 
     def load_checkpoint(self, model: nn.Module, map_location: str = None):
@@ -73,5 +74,5 @@ class EarlyStopping(object):
         :param map_location: str, how to remap the storage locations
         :return:
         """
-        self.logger.info(f"load model {self.save_model_path}")
+        tqdm.write(f"load model {self.save_model_path}")
         model.load_state_dict(torch.load(self.save_model_path, map_location=map_location))
