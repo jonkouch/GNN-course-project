@@ -45,7 +45,8 @@ def get_idx_data_loader(indices_list: list, batch_size: int, shuffle: bool):
 
 class Data:
 
-    def __init__(self, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray, edge_ids: np.ndarray, labels: np.ndarray):
+    def __init__(self, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray, edge_ids: np.ndarray, labels: np.ndarray, add_super_node: bool = False,
+                    node_raw_features: np.ndarray = None, edge_raw_features: np.ndarray = None):
         """
         Data object to store the nodes interaction information.
         :param src_node_ids: ndarray
@@ -53,18 +54,80 @@ class Data:
         :param node_interact_times: ndarray
         :param edge_ids: ndarray
         :param labels: ndarray
+        :param add_super_node: boolean, whether to add a super node
+        :param node_raw_features: ndarray, raw features of nodes
+        :param edge_raw_features: ndarray, raw features of edges
         """
         self.src_node_ids = src_node_ids
         self.dst_node_ids = dst_node_ids
         self.node_interact_times = node_interact_times
         self.edge_ids = edge_ids
         self.labels = labels
+        self.node_raw_features = node_raw_features
+        self.edge_raw_features = edge_raw_features
         self.num_interactions = len(src_node_ids)
         self.unique_node_ids = set(src_node_ids) | set(dst_node_ids)
         self.num_unique_nodes = len(self.unique_node_ids)
 
+        # Store the super node edges separately
+        self.super_node_edges_mask = np.array([])
 
-def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: float):
+        if add_super_node:
+            self._add_super_node()
+
+    def _add_super_node(self):
+        """
+        Add a super node that is connected to all other unique nodes. The interaction times and labels
+        will be set to zero for all super node edges.
+        """
+        super_node_id = max(self.unique_node_ids) + 1  # New node ID for the super node
+        super_src_nodes = []
+        super_dst_nodes = []
+        super_times = []
+        super_labels = []
+        super_edges = []
+        super_edges_raw_features = []
+
+        # Create new interactions between the super node and each unique node
+        current_max_edge_id = max(self.edge_ids)
+        for node_id in self.unique_node_ids:
+            super_src_nodes.append(super_node_id)
+            super_dst_nodes.append(node_id)
+            super_times.append(0)  # All interactions involving the super node will have a timestamp of zero
+            super_labels.append(0)  # All interactions involving the super node will have a label of zero
+            current_max_edge_id += 1
+            super_edges.append(current_max_edge_id)
+            super_edges_raw_features.append(np.zeros(self.edge_raw_features.shape[1]))
+
+        # Append these new interactions to the existing arrays
+        self.src_node_ids = np.concatenate([self.src_node_ids, np.array(super_src_nodes)])
+        self.dst_node_ids = np.concatenate([self.dst_node_ids, np.array(super_dst_nodes)])
+        self.node_interact_times = np.concatenate([self.node_interact_times, np.array(super_times)])
+        self.edge_ids = np.concatenate([self.edge_ids, np.array(super_edges)])
+        self.labels = np.concatenate([self.labels, np.array(super_labels)])
+        self.unique_node_ids.add(super_node_id)
+        self.num_interactions = len(self.src_node_ids)
+        self.num_unique_nodes = len(self.unique_node_ids)
+        self.node_raw_features = np.concatenate([self.node_raw_features, np.zeros((1, self.node_raw_features.shape[1]))])
+        self.edge_raw_features = np.concatenate([self.edge_raw_features, np.array(super_edges_raw_features)])
+
+        # Mark super node edges separately
+        super_node_edges_mask = np.concatenate([np.zeros(len(self.edge_ids) - len(super_edges)), np.ones(len(super_edges))])
+        self.super_node_edges_mask = super_node_edges_mask.astype(bool)
+
+        # Resort all edges by interaction time and reindex accordingly
+        sorted_indices = np.argsort(self.node_interact_times)
+        self.src_node_ids = self.src_node_ids[sorted_indices]
+        self.dst_node_ids = self.dst_node_ids[sorted_indices]
+        self.node_interact_times = self.node_interact_times[sorted_indices]
+        self.edge_ids = np.arange(len(self.src_node_ids))
+        self.labels = self.labels[sorted_indices]
+        self.super_node_edges_mask = self.super_node_edges_mask[sorted_indices]
+        self.node_raw_features = self.node_raw_features
+        self.edge_raw_features = self.edge_raw_features[sorted_indices]
+
+
+def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: float, add_super_node: bool = False):
     """
     generate data for link prediction task (inductive & transductive settings)
     :param dataset_name: str, dataset name
@@ -100,7 +163,19 @@ def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: fl
     edge_ids = graph_df.idx.values.astype(np.longlong)
     labels = graph_df.label.values
 
-    full_data = Data(src_node_ids=src_node_ids, dst_node_ids=dst_node_ids, node_interact_times=node_interact_times, edge_ids=edge_ids, labels=labels)
+    full_data = Data(src_node_ids=src_node_ids, dst_node_ids=dst_node_ids, node_interact_times=node_interact_times, edge_ids=edge_ids, labels=labels, add_super_node=add_super_node,
+                      node_raw_features=node_raw_features, edge_raw_features=edge_raw_features)
+    
+    # update the data with non-super node edges
+    src_node_ids = full_data.src_node_ids
+    dst_node_ids = full_data.dst_node_ids
+    node_interact_times = full_data.node_interact_times
+    edge_ids = full_data.edge_ids
+    labels = full_data.labels
+    node_raw_features = full_data.node_raw_features
+    edge_raw_features = full_data.edge_raw_features
+
+
 
     # the setting of seed follows previous works
     random.seed(2020)
@@ -115,8 +190,12 @@ def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: fl
     new_test_node_set = set(random.sample(test_node_set, int(0.1 * num_total_unique_node_ids)))
 
     # mask for each source and destination to denote whether they are new test nodes
-    new_test_source_mask = graph_df.u.map(lambda x: x in new_test_node_set).values
-    new_test_destination_mask = graph_df.i.map(lambda x: x in new_test_node_set).values
+    # new_test_source_mask = graph_df.u.map(lambda x: x in new_test_node_set).values
+    # new_test_destination_mask = graph_df.i.map(lambda x: x in new_test_node_set).values
+
+    # mask for each source and destination to denote whether they are new test nodes
+    new_test_source_mask = np.array([src_node_id in new_test_node_set for src_node_id in src_node_ids])
+    new_test_destination_mask = np.array([dst_node_id in new_test_node_set for dst_node_id in dst_node_ids])
 
     # mask, which is true for edges with both destination and source not being new test nodes (because we want to remove all edges involving any new test node)
     observed_edges_mask = np.logical_and(~new_test_source_mask, ~new_test_destination_mask)
@@ -173,6 +252,7 @@ def get_link_prediction_data(dataset_name: str, val_ratio: float, test_ratio: fl
     print("{} nodes were used for the inductive testing, i.e. are never seen during training".format(len(new_test_node_set)))
 
     return node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data
+
 
 
 def get_node_classification_data(dataset_name: str, val_ratio: float, test_ratio: float):

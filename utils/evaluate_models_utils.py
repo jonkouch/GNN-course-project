@@ -42,6 +42,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
             batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = \
                 evaluate_data.src_node_ids[evaluate_data_indices],  evaluate_data.dst_node_ids[evaluate_data_indices], \
                 evaluate_data.node_interact_times[evaluate_data_indices], evaluate_data.edge_ids[evaluate_data_indices]
+            
 
             if evaluate_neg_edge_sampler.negative_sample_strategy != 'random':
                 batch_neg_src_node_ids, batch_neg_dst_node_ids = evaluate_neg_edge_sampler.sample(size=len(batch_src_node_ids),
@@ -127,6 +128,8 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                                                                       node_interact_times=batch_node_interact_times)
             else:
                 raise ValueError(f"Wrong value for model_name {model_name}!")
+            
+
             # get positive and negative probabilities, shape (batch_size, )
             positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
             negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()

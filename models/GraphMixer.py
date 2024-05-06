@@ -93,14 +93,16 @@ class GraphMixer(nn.Module):
             self.neighbor_sampler.get_historical_neighbors(node_ids=node_ids,
                                                            node_interact_times=node_interact_times,
                                                            num_neighbors=num_neighbors)
+        
 
         # Tensor, shape (batch_size, num_neighbors, edge_feat_dim)
-        nodes_edge_raw_features = self.edge_raw_features[torch.from_numpy(neighbor_edge_ids)]
+        nodes_edge_raw_features = self.edge_raw_features[torch.from_numpy(neighbor_node_ids)]
         # Tensor, shape (batch_size, num_neighbors, time_feat_dim)
         nodes_neighbor_time_features = self.time_encoder(timestamps=torch.from_numpy(node_interact_times[:, np.newaxis] - neighbor_times).float().to(self.device))
 
         # ndarray, set the time features to all zeros for the padded timestamp
-        nodes_neighbor_time_features[torch.from_numpy(neighbor_node_ids == 0)] = 0.0
+        mask = torch.tensor(neighbor_times == 0).to(self.device)
+        nodes_neighbor_time_features[mask] = 0.0
 
         # Tensor, shape (batch_size, num_neighbors, edge_feat_dim + time_feat_dim)
         combined_features = torch.cat([nodes_edge_raw_features, nodes_neighbor_time_features], dim=-1)

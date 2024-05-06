@@ -23,7 +23,7 @@ if __name__ == "__main__":
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '50', '--dataset_name', 'wikipedia'])
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data = \
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         set_random_seed(seed=run)
 
         args.seed = run
-        args.load_model_name = f'{args.model_name}_seed{args.seed}'
+        args.load_model_name = f'{args.model_name}_seed{args.seed}_bench_50'
         args.save_result_name = f'{args.negative_sample_strategy}_negative_sampling_{args.model_name}_seed{args.seed}'
 
 
