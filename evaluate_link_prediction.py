@@ -23,7 +23,7 @@ if __name__ == "__main__":
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '50', '--dataset_name', 'wikipedia'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '20', '--dataset_name', 'wikipedia'])
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data = \

@@ -21,17 +21,21 @@ from utils.metrics import get_link_prediction_metrics
 from utils.DataLoader import get_idx_data_loader, get_link_prediction_data
 from utils.EarlyStopping import EarlyStopping
 from utils.load_configs import get_link_prediction_args
+import networkx as nx
+import random
+from collections import defaultdict
+
 
 def main():
 
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '50', '--dataset_name', 'wikipedia'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm'])
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data = \
-        get_link_prediction_data(dataset_name=args.dataset_name, val_ratio=args.val_ratio, test_ratio=args.test_ratio, add_super_node=True)
+        get_link_prediction_data(dataset_name=args.dataset_name, val_ratio=args.val_ratio, test_ratio=args.test_ratio, add_super_node=False)
 
     # initialize training neighbor sampler to retrieve temporal graph
     train_neighbor_sampler = get_neighbor_sampler(data=train_data, sample_neighbor_strategy=args.sample_neighbor_strategy,
@@ -171,6 +175,43 @@ def main():
                 train_losses.append(loss.item())
 
                 train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
+
+
+                # Identify and zero out high-focus nodes and edges
+                node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
+                # edge_gradients = torch.autograd.grad(loss, model[0].edge_raw_features, retain_graph=True)[0]
+
+                node_gradient_magnitudes = torch.norm(node_gradients, dim=1).cpu().numpy()
+                # edge_gradient_magnitudes = torch.norm(edge_gradients, dim=1).cpu().numpy()
+
+                mean_node_gradient = np.mean(node_gradient_magnitudes)
+                std_node_gradient = np.std(node_gradient_magnitudes)
+                node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
+
+                # mean_edge_gradient = np.mean(edge_gradient_magnitudes)
+                # std_edge_gradient = np.std(edge_gradient_magnitudes)
+                # edge_focus_threshold = mean_edge_gradient + 2 * std_edge_gradient
+
+                high_focus_nodes = set(np.where(node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                # high_focus_edges = set(np.where(edge_gradient_magnitudes > edge_focus_threshold)[0].tolist())
+
+
+                # Create a graph from training data
+                G = nx.Graph()
+                G.add_edges_from(zip(train_data.src_node_ids, train_data.dst_node_ids))
+
+                # Calculate the number of walks between high-focus nodes
+                walk_counts = defaultdict(int)
+                for node in high_focus_nodes:
+                    for neighbor in high_focus_nodes:
+                        if node != neighbor:
+                            # Simple walk count, you can use more sophisticated methods if needed
+                            walk_counts[(node, neighbor)] += len(list(nx.all_simple_paths(G, source=node, target=neighbor)))
+
+                # Randomly connect high-focus nodes with an edge inversely proportional to the number of walks
+                for (node1, node2), count in walk_counts.items():
+                    if random.random() < 1 / (count + 1):  # Inverse probability
+                        G.add_edge(node1, node2)
 
                 optimizer.zero_grad()
                 loss.backward()
