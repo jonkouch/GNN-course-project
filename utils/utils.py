@@ -493,3 +493,14 @@ class NegativeEdgeSampler(object):
         :return:
         """
         self.random_state = np.random.RandomState(self.seed)
+
+
+
+# # Function to update the edge list and timestamps while maintaining the order
+# def update_added_edges(added_edges_list, new_locations):
+#     """
+#     Update the indices of the added edges in the edge list so that they always observe added indices
+#     """
+#     new_added_edges_list = []
+#      for added_edge in added_edges_list:
+#         # find the last index in new locations that is less than or equal to the current index

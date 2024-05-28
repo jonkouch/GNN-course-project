@@ -47,7 +47,12 @@ def get_link_prediction_args(args=None):
     parser.add_argument('--negative_sample_strategy', type=str, default='random', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--load_best_configs', action='store_true', default=False, help='whether to load the best configurations')
+
+    parser.add_argument('--filter_loss', type=bool, default=False, help='whether to filter the loss')
     parser.add_argument('--drop_node_prob', type=float, default=0.0, help='probability to drop a node with high gradient')
+    
+    parser.add_argument('--add_focus_edges', type=bool, default=False, help='whether to add focus edges')
+    parser.add_argument('--add_probability', type=float, default=0.5, help='probability to add a focus edge')
 
     try:
         args = parser.parse_args(args=args)

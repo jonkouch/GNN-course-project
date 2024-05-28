@@ -16,6 +16,7 @@ from models.modules import MergeLayer
 
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes, create_optimizer
 from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
+# from utils.utils import add_edges_and_update_timestamps, update_edge_list_and_timestamps
 from utils.evaluate_models_utils import evaluate_model_link_prediction
 from utils.metrics import get_link_prediction_metrics
 from utils.DataLoader import get_idx_data_loader, get_link_prediction_data
@@ -31,7 +32,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '0.5'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--add_focus_edges', 'True', '--add_probability', '0.5'])
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data = \
@@ -107,7 +108,11 @@ def main():
 
         loss_func = nn.BCELoss()
 
+        drop_prob = args.drop_node_prob
+
         for epoch in range(args.num_epochs):
+
+            added_edges_indices = []
 
             model.train()
             # training, only use training graph
@@ -175,7 +180,7 @@ def main():
                 # train_losses.append(loss.item())
                 # train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
 
-
+                
                 # Identify and zero out high-focus nodes and edges
                 src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
                 src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
@@ -191,32 +196,99 @@ def main():
 
                 node_gradient_magnitudes = np.concatenate([src_node_gradient_magnitudes, dst_node_gradient_magnitudes,
                                                             negative_src_node_gradient_magnitudes, negative_dst_node_gradient_magnitudes])
+                                                            
 
                 mean_node_gradient = np.mean(node_gradient_magnitudes)
                 std_node_gradient = np.std(node_gradient_magnitudes)
                 node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
 
-                high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
-                high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                mean_src_node_gradient = np.mean(src_node_gradient_magnitudes)
+                std_src_node_gradient = np.std(src_node_gradient_magnitudes)
+                src_node_focus_threshold = mean_src_node_gradient + 2 * std_src_node_gradient
+
+                mean_dst_node_gradient = np.mean(dst_node_gradient_magnitudes)
+                std_dst_node_gradient = np.std(dst_node_gradient_magnitudes)
+                dst_node_focus_threshold = mean_dst_node_gradient + 2 * std_dst_node_gradient
+
+                high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > src_node_focus_threshold)[0].tolist())
+                high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > dst_node_focus_threshold)[0].tolist())
+                high_focus_neg_src_indices = set(np.where(negative_src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                high_focus_neg_dst_indices = set(np.where(negative_dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                    
+
+                if args.filter_loss:
+                    # Generate random tensor for the high-focus nodes
+                    random_tensor_src = torch.rand(len(high_focus_src_indices), device=labels.device)
+                    random_tensor_dst = torch.rand(len(high_focus_dst_indices), device=labels.device)
+                    random_tensor_neg_src = torch.rand(len(high_focus_neg_src_indices), device=labels.device)
+                    random_tensor_neg_dst = torch.rand(len(high_focus_neg_dst_indices), device=labels.device)
+
+                    # Create mask by comparing random tensor to drop probability
+                    mask_high_focus_src = random_tensor_src >= drop_prob
+                    mask_high_focus_dst = random_tensor_dst >= drop_prob
+                    mask_high_focus_neg_src = random_tensor_neg_src >= drop_prob
+                    mask_high_focus_neg_dst = random_tensor_neg_dst >= drop_prob
+
+                    # Create a full mask for labels
+                    mask = torch.ones_like(labels, dtype=torch.bool)
+
+                    # Apply mask to high-focus nodes
+                    mask[list(high_focus_src_indices)] = mask_high_focus_src
+                    mask[list(high_focus_dst_indices)] = mask_high_focus_dst
+                    mask[list(high_focus_neg_src_indices)] = mask_high_focus_neg_src
+                    mask[list(high_focus_neg_dst_indices)] = mask_high_focus_neg_dst
+                    
+
+                    filtered_loss = loss_func(input=predicts[mask], target=labels[mask])
+
+                if args.add_focus_edges:
+                    high_focus_src_nodes = set(batch_src_node_ids[list(high_focus_src_indices)].tolist())
+                    high_focus_dst_nodes = set(batch_dst_node_ids[list(high_focus_dst_indices)].tolist())
+
+                    # add focus edges not found in the original graph
+                    combinations = [(src, dst) for src in high_focus_src_nodes for dst in high_focus_dst_nodes if src != dst and (src, dst) not in zip(batch_src_node_ids, batch_dst_node_ids)]
+                    # take the first appearance of one of the nodes in the batch
+                    timestamps = [max(batch_node_interact_times[batch_src_node_ids == src][0], batch_node_interact_times[batch_dst_node_ids == dst][0]) for src, dst in combinations]
+                    
+                    for (src, dst), timestamp in zip(combinations, timestamps):
+                        if random.random() < args.add_probability:
+                            add_location = np.searchsorted(train_data.node_interact_times, timestamp)
+                            train_data.src_node_ids = np.insert(train_data.src_node_ids, add_location, src)
+                            train_data.dst_node_ids = np.insert(train_data.dst_node_ids, add_location, dst)
+                            train_data.node_interact_times = np.insert(train_data.node_interact_times, add_location, timestamp)
+                        
+                            # update added edges indices so it is sorted
+                            location = np.searchsorted(added_edges_indices, add_location)
+                            added_edges_indices.insert(location, add_location)
+                            # increment the indices in every entry greater than the added edge index
+                            added_edges_indices[location + 1:] = [index + 1 for index in added_edges_indices[location + 1:]]
+
+
+                if args.filter_loss:
+                    train_losses.append(filtered_loss.item())
+                    train_metrics.append(get_link_prediction_metrics(predicts=predicts[mask], labels=labels[mask]))
+
+
+                    optimizer.zero_grad()
+                    filtered_loss.backward()
+                    optimizer.step()
+
                 
-                
-                # Exclude high-focus nodes from loss calculation
-                mask = torch.ones_like(labels, dtype=torch.bool)
-                mask[list(high_focus_src_indices)] = False
-                mask[list(high_focus_dst_indices)] = False
+                else:
+                    train_losses.append(loss.item())
+                    train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
 
-                filtered_loss = loss_func(input=predicts[mask], target=labels[mask])
-
-                train_losses.append(filtered_loss.item())
-                train_metrics.append(get_link_prediction_metrics(predicts=predicts[mask], labels=labels[mask]))
-
-
-                optimizer.zero_grad()
-                filtered_loss.backward()
-                optimizer.step()
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
                 train_idx_data_loader_tqdm.set_description(f'Epoch: {epoch + 1}, train for the {batch_idx + 1}-th batch, train loss: {loss.item()}')
 
+            # remove all indices in added_edges_indices
+            if args.add_focus_edges:
+                train_data.src_node_ids = np.delete(train_data.src_node_ids, added_edges_indices)
+                train_data.dst_node_ids = np.delete(train_data.dst_node_ids, added_edges_indices)
+                train_data.node_interact_times = np.delete(train_data.node_interact_times, added_edges_indices)
 
 
             val_losses, val_metrics = evaluate_model_link_prediction(model_name=args.model_name,
