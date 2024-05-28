@@ -32,7 +32,10 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--add_focus_edges', 'True', '--add_probability', '0.5'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--add_focus_edges', 'True', '--add_probability', '0.5'])
+    
+    print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
+    print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
 
     # get data for training, validation and testing
     node_raw_features, edge_raw_features, full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data = \
@@ -110,6 +113,7 @@ def main():
 
         drop_prob = args.drop_node_prob
 
+
         for epoch in range(args.num_epochs):
 
             added_edges_indices = []
@@ -118,14 +122,15 @@ def main():
             # training, only use training graph
             model[0].set_neighbor_sampler(train_neighbor_sampler)
 
+
             # store train losses and metrics
             train_losses, train_metrics = [], []
             train_idx_data_loader_tqdm = tqdm(train_idx_data_loader, ncols=120)
             for batch_idx, train_data_indices in enumerate(train_idx_data_loader_tqdm):
-                train_data_indices = train_data_indices.numpy()
-                batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = \
+                train_data_indices = train_data_indices.numpy() + len(added_edges_indices)
+                batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = \
                     train_data.src_node_ids[train_data_indices], train_data.dst_node_ids[train_data_indices], \
-                    train_data.node_interact_times[train_data_indices], train_data.edge_ids[train_data_indices]
+                    train_data.node_interact_times[train_data_indices]
 
                 _, batch_neg_dst_node_ids = train_neg_edge_sampler.sample(size=len(batch_src_node_ids))
                 batch_neg_src_node_ids = batch_src_node_ids
@@ -267,7 +272,6 @@ def main():
                 if args.filter_loss:
                     train_losses.append(filtered_loss.item())
                     train_metrics.append(get_link_prediction_metrics(predicts=predicts[mask], labels=labels[mask]))
-
 
                     optimizer.zero_grad()
                     filtered_loss.backward()
