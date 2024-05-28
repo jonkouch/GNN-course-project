@@ -177,33 +177,41 @@ def main():
 
 
                 # Identify and zero out high-focus nodes and edges
+                
+
                 src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
-                src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
-
                 dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings, retain_graph=True)[0]
-                dst_node_gradient_magnitudes = torch.norm(dst_node_gradients, dim=1).cpu().numpy()
-
                 negative_src_node_gradients = torch.autograd.grad(loss, batch_neg_src_node_embeddings, retain_graph=True)[0]
-                negative_src_node_gradient_magnitudes = torch.norm(negative_src_node_gradients, dim=1).cpu().numpy()
-
                 negative_dst_node_gradients = torch.autograd.grad(loss, batch_neg_dst_node_embeddings, retain_graph=True)[0]
-                negative_dst_node_gradient_magnitudes = torch.norm(negative_dst_node_gradients, dim=1).cpu().numpy()
 
-                node_gradient_magnitudes = np.concatenate([src_node_gradient_magnitudes, dst_node_gradient_magnitudes,
-                                                            negative_src_node_gradient_magnitudes, negative_dst_node_gradient_magnitudes])
+                gradients = [src_node_gradients, dst_node_gradients, negative_src_node_gradients, negative_dst_node_gradients]
+                node_gradient_magnitudes = [torch.norm(norm_gradient, dim=1).cpu().numpy() for norm_gradient in gradients]
+                
 
-                mean_node_gradient = np.mean(node_gradient_magnitudes)
-                std_node_gradient = np.std(node_gradient_magnitudes)
-                node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
+                node_mean_gradients = [np.mean(gradient_magnitudes) for gradient_magnitudes in node_gradient_magnitudes]
+                node_std_gradients = [np.std(gradient_magnitudes) for gradient_magnitudes in node_gradient_magnitudes]
+                node_focus_thresholds = [mean + 2*std for mean, std in zip(node_mean_gradients, node_std_gradients)]
+                
 
-                high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
-                high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                mask = torch.ones_like(labels, dtype=bool)
+                for i, threshold in enumerate(node_focus_thresholds):
+                    high_focus = np.array(np.where(node_gradient_magnitudes[i] > threshold)[0])
+                    neg_indices = high_focus[np.random.random(len(high_focus)) < args.drop_node_prob]
+                    mask[neg_indices] = False
+
+
+                # mean_node_gradient = np.mean(node_gradient_magnitudes)
+                # std_node_gradient = np.std(node_gradient_magnitudes)
+                # node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
+
+                # high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                # high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
                 
                 
-                # Exclude high-focus nodes from loss calculation
-                mask = torch.ones_like(labels, dtype=torch.bool)
-                mask[list(high_focus_src_indices)] = False
-                mask[list(high_focus_dst_indices)] = False
+                # # Exclude high-focus nodes from loss calculation
+                # mask = torch.ones_like(labels, dtype=torch.bool)
+                # mask[list(high_focus_src_indices)] = False
+                # mask[list(high_focus_dst_indices)] = False
 
                 filtered_loss = loss_func(input=predicts[mask], target=labels[mask])
 
