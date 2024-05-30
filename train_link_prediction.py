@@ -25,6 +25,7 @@ from utils.load_configs import get_link_prediction_args
 import networkx as nx
 import random
 from collections import defaultdict
+from dynamic_laser.laser import LaserDynamicTransform
 
 
 def main():
@@ -32,7 +33,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--add_focus_edges', 'True', '--add_probability', '0.5'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '5']) # '--add_focus_edges', 'True', '--add_probability', '0.5'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -72,8 +73,9 @@ def main():
         set_random_seed(seed=run)
 
         args.seed = run
-        args.save_model_name = f'{args.model_name}_seed{args.seed}'
-
+        # name = input('Unique model name: ')
+        name = ""
+        args.save_model_name = f'{args.model_name}_seed{args.seed}_{name}'
 
         run_start_time = time.time()
         tqdm.write(f"********** Run {run + 1} starts. **********")
@@ -113,6 +115,15 @@ def main():
 
         drop_prob = args.drop_node_prob
 
+        if args.laser_snapshots:
+            G = nx.Graph()
+            all_edges = np.vstack([train_data.src_node_ids, train_data.dst_node_ids]).T
+            G.add_edges_from(all_edges)
+            laser = LaserDynamicTransform(G, args.laser_snapshots, all_edges)
+            rewirings = laser.create_rewirings()
+            times_to_add = [round(i * len(train_idx_data_loader) / (args.laser_snapshots + 1)) for i in range(1, args.laser_snapshots + 1)]
+            times_to_add_idx = 0
+
 
         for epoch in range(args.num_epochs):
 
@@ -134,6 +145,26 @@ def main():
 
                 _, batch_neg_dst_node_ids = train_neg_edge_sampler.sample(size=len(batch_src_node_ids))
                 batch_neg_src_node_ids = batch_src_node_ids
+
+                if args.laser_snapshots and batch_idx in times_to_add:
+                    edges = rewirings[times_to_add_idx]
+                    batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
+                    combinations = edges[np.all(~np.all(edges[:, np.newaxis, :] == batch_edges[np.newaxis, :, :], axis=2), axis=1)]  # all edges that don't already appear in batch
+                    timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                    to_add = np.random.rand(combinations.shape[0]) < args.add_probability
+
+                    for edge, timestamp in zip(combinations[to_add], timestamps[to_add]):
+                        add_location = np.searchsorted(train_data.node_interact_times, timestamp)
+                        train_data.src_node_ids = np.insert(train_data.src_node_ids, add_location, edge[0])
+                        train_data.dst_node_ids = np.insert(train_data.dst_node_ids, add_location, edge[1])
+                        train_data.node_interact_times = np.insert(train_data.node_interact_times, add_location, timestamp)
+                    
+                        # update added edges indices so it is sorted
+                        location = np.searchsorted(added_edges_indices, add_location)
+                        added_edges_indices.insert(location, add_location)
+                        # increment the indices in every entry greater than the added edge index
+                        added_edges_indices[location + 1:] = [index + 1 for index in added_edges_indices[location + 1:]]
+                    times_to_add_idx += 1
 
 
                 if args.model_name in ['GraphMixer']:
@@ -246,6 +277,8 @@ def main():
 
                     filtered_loss = loss_func(input=predicts[mask], target=labels[mask])
 
+                
+
                 if args.add_focus_edges:
                     high_focus_src_nodes = set(batch_src_node_ids[list(high_focus_src_indices)].tolist())
                     high_focus_dst_nodes = set(batch_dst_node_ids[list(high_focus_dst_indices)].tolist())
@@ -267,6 +300,7 @@ def main():
                             added_edges_indices.insert(location, add_location)
                             # increment the indices in every entry greater than the added edge index
                             added_edges_indices[location + 1:] = [index + 1 for index in added_edges_indices[location + 1:]]
+                    
 
 
                 if args.filter_loss:

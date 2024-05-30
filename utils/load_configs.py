@@ -54,6 +54,8 @@ def get_link_prediction_args(args=None):
     parser.add_argument('--add_focus_edges', type=bool, default=False, help='whether to add focus edges')
     parser.add_argument('--add_probability', type=float, default=0.5, help='probability to add a focus edge')
 
+    parser.add_argument('--laser_snapshots', type=int, default=0, help='How many iterations of our dynamic LASER we want to do')
+
     try:
         args = parser.parse_args(args=args)
         args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
