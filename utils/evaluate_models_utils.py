@@ -89,6 +89,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
                 to_add = np.random.rand(combinations.shape[0]) < len(batch_node_interact_times)/combinations.shape[0]
                 combinations = combinations[to_add]
+                timestamps = timestamps[to_add]
 
                 added_edges_indices = []
                 # merge the two lists and keep a mask of the original edges
@@ -123,7 +124,11 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                     
                 batch_src_node_ids = np.array(new_src_node_ids)
                 batch_dst_node_ids = np.array(new_dst_node_ids)
+                batch_neg_node_interact_times = batch_node_interact_times.copy()
                 batch_node_interact_times = np.array(new_node_interact_times)
+                pred_mask = torch.tensor([True] * len(batch_src_node_ids), dtype=torch.bool)
+                pred_mask[added_edges_indices] = False
+
                     
 
 
@@ -143,7 +148,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                       dst_node_ids=batch_neg_dst_node_ids,
-                                                                      node_interact_times=batch_node_interact_times,
+                                                                      node_interact_times=batch_neg_node_interact_times,
                                                                       num_neighbors=num_neighbors)
             elif model_name in ['JODIE', 'DyRep', 'TGN']:
                 # note that negative nodes do not change the memories while the positive nodes change the memories,
@@ -153,7 +158,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                       dst_node_ids=batch_neg_dst_node_ids,
-                                                                      node_interact_times=batch_node_interact_times,
+                                                                      node_interact_times=batch_neg_node_interact_times,
                                                                       edge_ids=None,
                                                                       edges_are_positive=False,
                                                                       num_neighbors=num_neighbors)
@@ -182,7 +187,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                       dst_node_ids=batch_neg_dst_node_ids,
-                                                                      node_interact_times=batch_node_interact_times,
+                                                                      node_interact_times=batch_neg_node_interact_times,
                                                                       num_neighbors=num_neighbors,
                                                                       time_gap=time_gap)
             elif model_name in ['DyGFormer']:
@@ -198,13 +203,13 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                       dst_node_ids=batch_neg_dst_node_ids,
-                                                                      node_interact_times=batch_node_interact_times)
+                                                                      node_interact_times=batch_neg_node_interact_times)
             else:
                 raise ValueError(f"Wrong value for model_name {model_name}!")
             
 
             # get positive and negative probabilities, shape (batch_size, )
-            positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
+            positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()[pred_mask]
             negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
             predicts = torch.cat([positive_probabilities, negative_probabilities], dim=0)
