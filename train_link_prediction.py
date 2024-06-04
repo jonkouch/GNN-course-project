@@ -26,6 +26,7 @@ import networkx as nx
 import random
 from collections import defaultdict
 from dynamic_laser.laser import LaserDynamicTransform
+import math
 
 
 def main():
@@ -33,7 +34,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '5']) # '--add_focus_edges', 'True', '--add_probability', '0.5'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '500']) # '--add_focus_edges', 'True', '--add_probability', '0.5'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -115,19 +116,18 @@ def main():
 
         drop_prob = args.drop_node_prob
 
-        if args.laser_snapshots:
+        lasers = []
+        for i in range(args.laser_snapshots):
             G = nx.Graph()
-            all_edges = np.vstack([train_data.src_node_ids, train_data.dst_node_ids]).T
-            G.add_edges_from(all_edges)
-            laser = LaserDynamicTransform(G, args.laser_snapshots, all_edges)
-            rewirings = laser.create_rewirings()
-            times_to_add = [round(i * len(train_idx_data_loader) / (args.laser_snapshots + 1)) for i in range(1, args.laser_snapshots + 1)]
-            times_to_add_idx = 0
-
-
+            edges_in_time_window = np.vstack([train_data.src_node_ids[math.floor(i/args.laser_snapshots * len(train_data.src_node_ids)): math.floor((i+1)/args.laser_snapshots * len(train_data.src_node_ids))],
+                                                train_data.dst_node_ids[math.floor(i/args.laser_snapshots * len(train_data.src_node_ids)): math.floor((i+1)/args.laser_snapshots * len(train_data.src_node_ids))]]).T
+            G.add_edges_from(edges_in_time_window)
+            laser = LaserDynamicTransform(G, 3, edges_in_time_window)
+            lasers.append(laser)
+        
         for epoch in range(args.num_epochs):
 
-            added_edges_indices = []
+            
 
             model.train()
             # training, only use training graph
@@ -137,8 +137,10 @@ def main():
             # store train losses and metrics
             train_losses, train_metrics = [], []
             train_idx_data_loader_tqdm = tqdm(train_idx_data_loader, ncols=120)
+
+            old_laser = -1
             for batch_idx, train_data_indices in enumerate(train_idx_data_loader_tqdm):
-                train_data_indices = train_data_indices.numpy() + len(added_edges_indices)
+                added_edges_indices = []
                 batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times = \
                     train_data.src_node_ids[train_data_indices], train_data.dst_node_ids[train_data_indices], \
                     train_data.node_interact_times[train_data_indices]
@@ -146,26 +148,86 @@ def main():
                 _, batch_neg_dst_node_ids = train_neg_edge_sampler.sample(size=len(batch_src_node_ids))
                 batch_neg_src_node_ids = batch_src_node_ids
 
-                if args.laser_snapshots and batch_idx in times_to_add:
-                    edges = rewirings[times_to_add_idx]
-                    batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
-                    combinations = edges[np.all(~np.all(edges[:, np.newaxis, :] == batch_edges[np.newaxis, :, :], axis=2), axis=1)]  # all edges that don't already appear in batch
-                    timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
-                    to_add = np.random.rand(combinations.shape[0]) < args.add_probability
+                batch_neg_timestamps = batch_node_interact_times.copy()
 
-                    for edge, timestamp in zip(combinations[to_add], timestamps[to_add]):
-                        add_location = np.searchsorted(train_data.node_interact_times, timestamp)
-                        train_data.src_node_ids = np.insert(train_data.src_node_ids, add_location, edge[0])
-                        train_data.dst_node_ids = np.insert(train_data.dst_node_ids, add_location, edge[1])
-                        train_data.node_interact_times = np.insert(train_data.node_interact_times, add_location, timestamp)
+                if args.laser_snapshots:
+                    curr_laser = (batch_idx * args.laser_snapshots) // len(train_idx_data_loader)
+
+                    if curr_laser == 0:
+                        old_laser = curr_laser
+                        laser = lasers[curr_laser]
+                        rewirings = laser.create_rewirings()
+                        old_rewirings = rewirings
+
+                    elif curr_laser != old_laser:
+                        old_laser = curr_laser
+                        laser = lasers[curr_laser]
+                        rewirings = laser.create_rewirings()
+                        old_rewirings = rewirings
                     
-                        # update added edges indices so it is sorted
-                        location = np.searchsorted(added_edges_indices, add_location)
-                        added_edges_indices.insert(location, add_location)
-                        # increment the indices in every entry greater than the added edge index
-                        added_edges_indices[location + 1:] = [index + 1 for index in added_edges_indices[location + 1:]]
-                    times_to_add_idx += 1
+                    else:
+                        rewirings = old_rewirings
 
+
+                    laser = lasers[curr_laser]
+
+                    num_rewirings = 3
+                    batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
+                    combinations = None
+                    for i in range(len(rewirings)):
+                        if len(rewirings[i]) == 0:
+                            continue
+                            
+                        # concatenate the combinations
+                        if combinations is None:
+                            combinations = rewirings[i]
+                        else:
+                            combinations = np.concatenate((combinations, rewirings[i]), axis=0)
+
+                    timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                    to_add = np.random.rand(combinations.shape[0]) < len(batch_node_interact_times)/combinations.shape[0]
+                    combinations = combinations[to_add]
+
+
+                    added_edges_indices = []
+                    # merge the two lists and keep a mask of the original edges
+                    i, j = 0, 0
+                    new_src_node_ids, new_dst_node_ids, new_node_interact_times = [], [], []
+
+                    while i < len(batch_src_node_ids) and j < len(combinations):
+                        if batch_node_interact_times[i] < timestamps[j]:
+                            new_src_node_ids.append(batch_src_node_ids[i])
+                            new_dst_node_ids.append(batch_dst_node_ids[i])
+                            new_node_interact_times.append(batch_node_interact_times[i])
+                            i += 1
+                        else:
+                            new_src_node_ids.append(combinations[j][0])
+                            new_dst_node_ids.append(combinations[j][1])
+                            new_node_interact_times.append(timestamps[j])
+                            added_edges_indices.append(len(new_src_node_ids) - 1)
+                            j += 1
+
+                    while i < len(batch_src_node_ids):
+                        new_src_node_ids.append(batch_src_node_ids[i])
+                        new_dst_node_ids.append(batch_dst_node_ids[i])
+                        new_node_interact_times.append(batch_node_interact_times[i])
+                        i += 1
+
+                    while j < len(combinations):
+                        new_src_node_ids.append(combinations[j][0])
+                        new_dst_node_ids.append(combinations[j][1])
+                        new_node_interact_times.append(timestamps[j])
+                        added_edges_indices.append(len(new_src_node_ids) - 1)
+                        j += 1
+                        
+                    batch_src_node_ids = np.array(new_src_node_ids)
+                    batch_dst_node_ids = np.array(new_dst_node_ids)
+                    batch_node_interact_times = np.array(new_node_interact_times)
+
+
+                loss_mask = torch.tensor([True] * len(batch_src_node_ids), device=args.device)
+                if args.laser_snapshots:
+                    loss_mask[added_edges_indices] = False
 
                 if args.model_name in ['GraphMixer']:
                     # get temporal embedding of source and destination nodes
@@ -182,7 +244,7 @@ def main():
                     batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                         model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                             dst_node_ids=batch_neg_dst_node_ids,
-                                                                            node_interact_times=batch_node_interact_times,
+                                                                            node_interact_times=batch_neg_timestamps,
                                                                             num_neighbors=args.num_neighbors,
                                                                             time_gap=args.time_gap)
                 
@@ -206,6 +268,8 @@ def main():
 
                 # get positive and negative probabilities, shape (batch_size, )
                 positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
+                positive_probabilities = positive_probabilities[loss_mask]
+
                 negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
                 predicts = torch.cat([positive_probabilities, negative_probabilities], dim=0)
@@ -216,40 +280,40 @@ def main():
                 # train_losses.append(loss.item())
                 # train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
 
-                
-                # Identify and zero out high-focus nodes and edges
-                src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
-                src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
+                if args.add_focus_edges or args.filter_loss:
+                    # Identify and zero out high-focus nodes and edges
+                    src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
+                    src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
 
-                dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings, retain_graph=True)[0]
-                dst_node_gradient_magnitudes = torch.norm(dst_node_gradients, dim=1).cpu().numpy()
+                    dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings, retain_graph=True)[0]
+                    dst_node_gradient_magnitudes = torch.norm(dst_node_gradients, dim=1).cpu().numpy()
 
-                negative_src_node_gradients = torch.autograd.grad(loss, batch_neg_src_node_embeddings, retain_graph=True)[0]
-                negative_src_node_gradient_magnitudes = torch.norm(negative_src_node_gradients, dim=1).cpu().numpy()
+                    negative_src_node_gradients = torch.autograd.grad(loss, batch_neg_src_node_embeddings, retain_graph=True)[0]
+                    negative_src_node_gradient_magnitudes = torch.norm(negative_src_node_gradients, dim=1).cpu().numpy()
 
-                negative_dst_node_gradients = torch.autograd.grad(loss, batch_neg_dst_node_embeddings, retain_graph=True)[0]
-                negative_dst_node_gradient_magnitudes = torch.norm(negative_dst_node_gradients, dim=1).cpu().numpy()
+                    negative_dst_node_gradients = torch.autograd.grad(loss, batch_neg_dst_node_embeddings, retain_graph=True)[0]
+                    negative_dst_node_gradient_magnitudes = torch.norm(negative_dst_node_gradients, dim=1).cpu().numpy()
 
-                node_gradient_magnitudes = np.concatenate([src_node_gradient_magnitudes, dst_node_gradient_magnitudes,
-                                                            negative_src_node_gradient_magnitudes, negative_dst_node_gradient_magnitudes])
-                                                            
+                    node_gradient_magnitudes = np.concatenate([src_node_gradient_magnitudes, dst_node_gradient_magnitudes,
+                                                                negative_src_node_gradient_magnitudes, negative_dst_node_gradient_magnitudes])
+                                                                
 
-                mean_node_gradient = np.mean(node_gradient_magnitudes)
-                std_node_gradient = np.std(node_gradient_magnitudes)
-                node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
+                    mean_node_gradient = np.mean(node_gradient_magnitudes)
+                    std_node_gradient = np.std(node_gradient_magnitudes)
+                    node_focus_threshold = mean_node_gradient + 2 * std_node_gradient
 
-                mean_src_node_gradient = np.mean(src_node_gradient_magnitudes)
-                std_src_node_gradient = np.std(src_node_gradient_magnitudes)
-                src_node_focus_threshold = mean_src_node_gradient + 2 * std_src_node_gradient
+                    mean_src_node_gradient = np.mean(src_node_gradient_magnitudes)
+                    std_src_node_gradient = np.std(src_node_gradient_magnitudes)
+                    src_node_focus_threshold = mean_src_node_gradient + 2 * std_src_node_gradient
 
-                mean_dst_node_gradient = np.mean(dst_node_gradient_magnitudes)
-                std_dst_node_gradient = np.std(dst_node_gradient_magnitudes)
-                dst_node_focus_threshold = mean_dst_node_gradient + 2 * std_dst_node_gradient
+                    mean_dst_node_gradient = np.mean(dst_node_gradient_magnitudes)
+                    std_dst_node_gradient = np.std(dst_node_gradient_magnitudes)
+                    dst_node_focus_threshold = mean_dst_node_gradient + 2 * std_dst_node_gradient
 
-                high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > src_node_focus_threshold)[0].tolist())
-                high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > dst_node_focus_threshold)[0].tolist())
-                high_focus_neg_src_indices = set(np.where(negative_src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
-                high_focus_neg_dst_indices = set(np.where(negative_dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                    high_focus_src_indices = set(np.where(src_node_gradient_magnitudes > src_node_focus_threshold)[0].tolist())
+                    high_focus_dst_indices = set(np.where(dst_node_gradient_magnitudes > dst_node_focus_threshold)[0].tolist())
+                    high_focus_neg_src_indices = set(np.where(negative_src_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
+                    high_focus_neg_dst_indices = set(np.where(negative_dst_node_gradient_magnitudes > node_focus_threshold)[0].tolist())
                     
 
                 if args.filter_loss:
