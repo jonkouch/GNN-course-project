@@ -11,7 +11,7 @@ from utils.DataLoader import Data
 
 def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_sampler: NeighborSampler, evaluate_idx_data_loader: DataLoader,
                                    evaluate_neg_edge_sampler: NegativeEdgeSampler, evaluate_data: Data, loss_func: nn.Module,
-                                   num_neighbors: int = 20, time_gap: int = 2000):
+                                   num_neighbors: int = 20, time_gap: int = 2000, lasers = None, num_snapshots = 10):
     """
     evaluate models on the link prediction task
     :param model_name: str, name of the model
@@ -37,6 +37,8 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
         # store evaluate losses and metrics
         evaluate_losses, evaluate_metrics = [], []
         evaluate_idx_data_loader_tqdm = tqdm(evaluate_idx_data_loader, ncols=120)
+        
+        old_laser = -1
         for batch_idx, evaluate_data_indices in enumerate(evaluate_idx_data_loader_tqdm):
             evaluate_data_indices = evaluate_data_indices.numpy()
             batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = \
@@ -53,6 +55,77 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
             else:
                 _, batch_neg_dst_node_ids = evaluate_neg_edge_sampler.sample(size=len(batch_src_node_ids))
                 batch_neg_src_node_ids = batch_src_node_ids
+
+            if lasers is not None:
+                curr_laser = (batch_idx * num_snapshots) // len(evaluate_idx_data_loader)
+
+                if old_laser == -1:
+                    old_laser = curr_laser
+                    laser = lasers[curr_laser]
+                    rewirings = laser.create_rewirings()
+                    old_rewirings = rewirings
+
+                elif curr_laser != old_laser:
+                    old_laser = curr_laser
+                    laser = lasers[curr_laser]
+                    rewirings = laser.create_rewirings()
+                    old_rewirings = rewirings
+                
+                rewirings = old_rewirings
+
+                num_rewirings = 3
+                batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
+                combinations = None
+                for i in range(len(rewirings)):
+                    if len(rewirings[i]) == 0:
+                        continue
+                    
+                    # concatenate the combinations
+                    if combinations is None:
+                        combinations = rewirings[i]
+                    else:
+                        combinations = np.concatenate((combinations, rewirings[i]), axis=0)
+
+                timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                to_add = np.random.rand(combinations.shape[0]) < len(batch_node_interact_times)/combinations.shape[0]
+                combinations = combinations[to_add]
+
+                added_edges_indices = []
+                # merge the two lists and keep a mask of the original edges
+                i, j = 0, 0
+                new_src_node_ids, new_dst_node_ids, new_node_interact_times = [], [], []
+
+                while i < len(batch_src_node_ids) and j < len(combinations):
+                    if batch_node_interact_times[i] < timestamps[j]:
+                        new_src_node_ids.append(batch_src_node_ids[i])
+                        new_dst_node_ids.append(batch_dst_node_ids[i])
+                        new_node_interact_times.append(batch_node_interact_times[i])
+                        i += 1
+                    else:
+                        new_src_node_ids.append(combinations[j][0])
+                        new_dst_node_ids.append(combinations[j][1])
+                        new_node_interact_times.append(timestamps[j])
+                        added_edges_indices.append(len(new_src_node_ids) - 1)
+                        j += 1
+
+                while i < len(batch_src_node_ids):
+                    new_src_node_ids.append(batch_src_node_ids[i])
+                    new_dst_node_ids.append(batch_dst_node_ids[i])
+                    new_node_interact_times.append(batch_node_interact_times[i])
+                    i += 1
+
+                while j < len(combinations):
+                    new_src_node_ids.append(combinations[j][0])
+                    new_dst_node_ids.append(combinations[j][1])
+                    new_node_interact_times.append(timestamps[j])
+                    added_edges_indices.append(len(new_src_node_ids) - 1)
+                    j += 1
+                    
+                batch_src_node_ids = np.array(new_src_node_ids)
+                batch_dst_node_ids = np.array(new_dst_node_ids)
+                batch_node_interact_times = np.array(new_node_interact_times)
+                    
+
 
             # we need to compute for positive and negative edges respectively, because the new sampling strategy (for evaluation) allows the negative source nodes to be
             # different from the source nodes, this is different from previous works that just replace destination nodes with negative destination nodes

@@ -34,7 +34,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '500']) # '--add_focus_edges', 'True', '--add_probability', '0.5'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '500', '--test_laser', 'True', '--test_laser_snapshots', '100',])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -124,6 +124,14 @@ def main():
             G.add_edges_from(edges_in_time_window)
             laser = LaserDynamicTransform(G, 3, edges_in_time_window)
             lasers.append(laser)
+
+        for i in range(args.test_laser_snapshots):
+            G = nx.Graph()
+            edges_in_time_window = np.vstack([val_data.src_node_ids[math.floor(i/args.test_laser_snapshots * len(val_data.src_node_ids)): math.floor((i+1)/args.test_laser_snapshots * len(val_data.src_node_ids))],
+                                                val_data.dst_node_ids[math.floor(i/args.test_laser_snapshots * len(val_data.src_node_ids)): math.floor((i+1)/args.test_laser_snapshots * len(val_data.src_node_ids))]]).T
+            G.add_edges_from(edges_in_time_window)
+            test_laser = LaserDynamicTransform(G, 3, edges_in_time_window)
+            lasers.append(test_laser)
         
         for epoch in range(args.num_epochs):
 
@@ -153,7 +161,7 @@ def main():
                 if args.laser_snapshots:
                     curr_laser = (batch_idx * args.laser_snapshots) // len(train_idx_data_loader)
 
-                    if curr_laser == 0:
+                    if old_laser == -1:
                         old_laser = curr_laser
                         laser = lasers[curr_laser]
                         rewirings = laser.create_rewirings()
@@ -168,8 +176,6 @@ def main():
                     else:
                         rewirings = old_rewirings
 
-
-                    laser = lasers[curr_laser]
 
                     num_rewirings = 3
                     batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
@@ -280,12 +286,12 @@ def main():
                 # train_losses.append(loss.item())
                 # train_metrics.append(get_link_prediction_metrics(predicts=predicts, labels=labels))
 
-                if args.add_focus_edges or args.filter_loss:
+                if args.filter_loss:
                     # Identify and zero out high-focus nodes and edges
-                    src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0]
+                    src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings[loss_mask], retain_graph=True)[0]
                     src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
 
-                    dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings, retain_graph=True)[0]
+                    dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings[loss_mask], retain_graph=True)[0]
                     dst_node_gradient_magnitudes = torch.norm(dst_node_gradients, dim=1).cpu().numpy()
 
                     negative_src_node_gradients = torch.autograd.grad(loss, batch_neg_src_node_embeddings, retain_graph=True)[0]
@@ -340,30 +346,6 @@ def main():
                     
 
                     filtered_loss = loss_func(input=predicts[mask], target=labels[mask])
-
-                
-
-                if args.add_focus_edges:
-                    high_focus_src_nodes = set(batch_src_node_ids[list(high_focus_src_indices)].tolist())
-                    high_focus_dst_nodes = set(batch_dst_node_ids[list(high_focus_dst_indices)].tolist())
-
-                    # add focus edges not found in the original graph
-                    combinations = [(src, dst) for src in high_focus_src_nodes for dst in high_focus_dst_nodes if src != dst and (src, dst) not in zip(batch_src_node_ids, batch_dst_node_ids)]
-                    # take the first appearance of one of the nodes in the batch
-                    timestamps = [max(batch_node_interact_times[batch_src_node_ids == src][0], batch_node_interact_times[batch_dst_node_ids == dst][0]) for src, dst in combinations]
-                    
-                    for (src, dst), timestamp in zip(combinations, timestamps):
-                        if random.random() < args.add_probability:
-                            add_location = np.searchsorted(train_data.node_interact_times, timestamp)
-                            train_data.src_node_ids = np.insert(train_data.src_node_ids, add_location, src)
-                            train_data.dst_node_ids = np.insert(train_data.dst_node_ids, add_location, dst)
-                            train_data.node_interact_times = np.insert(train_data.node_interact_times, add_location, timestamp)
-                        
-                            # update added edges indices so it is sorted
-                            location = np.searchsorted(added_edges_indices, add_location)
-                            added_edges_indices.insert(location, add_location)
-                            # increment the indices in every entry greater than the added edge index
-                            added_edges_indices[location + 1:] = [index + 1 for index in added_edges_indices[location + 1:]]
                     
 
 
@@ -386,11 +368,6 @@ def main():
 
                 train_idx_data_loader_tqdm.set_description(f'Epoch: {epoch + 1}, train for the {batch_idx + 1}-th batch, train loss: {loss.item()}')
 
-            # remove all indices in added_edges_indices
-            if args.add_focus_edges:
-                train_data.src_node_ids = np.delete(train_data.src_node_ids, added_edges_indices)
-                train_data.dst_node_ids = np.delete(train_data.dst_node_ids, added_edges_indices)
-                train_data.node_interact_times = np.delete(train_data.node_interact_times, added_edges_indices)
 
 
             val_losses, val_metrics = evaluate_model_link_prediction(model_name=args.model_name,
@@ -401,7 +378,8 @@ def main():
                                                                      evaluate_data=val_data,
                                                                      loss_func=loss_func,
                                                                      num_neighbors=args.num_neighbors,
-                                                                     time_gap=args.time_gap)
+                                                                     time_gap=args.time_gap,
+                                                                     lasers = test_lasers, laser_snapshots = args.test_laser_snapshots)
 
 
             new_node_val_losses, new_node_val_metrics = evaluate_model_link_prediction(model_name=args.model_name,
@@ -412,7 +390,8 @@ def main():
                                                                                        evaluate_data=new_node_val_data,
                                                                                        loss_func=loss_func,
                                                                                        num_neighbors=args.num_neighbors,
-                                                                                       time_gap=args.time_gap)
+                                                                                       time_gap=args.time_gap, lasers = test_lasers,
+                                                                                       laser_snapshots = args.test_laser_snapshots)
 
             
             # Summarize epoch and losses
@@ -447,7 +426,8 @@ def main():
                                                                            evaluate_data=test_data,
                                                                            loss_func=loss_func,
                                                                            num_neighbors=args.num_neighbors,
-                                                                           time_gap=args.time_gap)
+                                                                           time_gap=args.time_gap, lasers = test_lasers,
+                                                                           laser_snapshots = args.test_laser_snapshots)
 
 
                 new_node_test_losses, new_node_test_metrics = evaluate_model_link_prediction(model_name=args.model_name,
@@ -458,8 +438,8 @@ def main():
                                                                                              evaluate_data=new_node_test_data,
                                                                                              loss_func=loss_func,
                                                                                              num_neighbors=args.num_neighbors,
-                                                                                             time_gap=args.time_gap)
-
+                                                                                             time_gap=args.time_gap, lasers = test_lasers,
+                                                                                             laser_snapshots = args.test_laser_snapshots)
 
                 test_info = f'Test Loss: {np.mean(test_losses):.4f}, New Node Test Loss: {np.mean(new_node_test_losses):.4f}'
                 tqdm.write(test_info)
