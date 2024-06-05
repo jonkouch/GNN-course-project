@@ -44,7 +44,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
             batch_src_node_ids, batch_dst_node_ids, batch_node_interact_times, batch_edge_ids = \
                 evaluate_data.src_node_ids[evaluate_data_indices],  evaluate_data.dst_node_ids[evaluate_data_indices], \
                 evaluate_data.node_interact_times[evaluate_data_indices], evaluate_data.edge_ids[evaluate_data_indices]
-            
+            batch_neg_node_interact_times = batch_node_interact_times.copy()
 
             if evaluate_neg_edge_sampler.negative_sample_strategy != 'random':
                 batch_neg_src_node_ids, batch_neg_dst_node_ids = evaluate_neg_edge_sampler.sample(size=len(batch_src_node_ids),
@@ -73,8 +73,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                 
                 rewirings = old_rewirings
 
-                num_rewirings = 3
-                batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
+
                 combinations = None
                 for i in range(len(rewirings)):
                     if len(rewirings[i]) == 0:
@@ -124,7 +123,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                     
                 batch_src_node_ids = np.array(new_src_node_ids)
                 batch_dst_node_ids = np.array(new_dst_node_ids)
-                batch_neg_node_interact_times = batch_node_interact_times.copy()
+                
                 batch_node_interact_times = np.array(new_node_interact_times)
                 pred_mask = torch.tensor([True] * len(batch_src_node_ids), dtype=torch.bool)
                 pred_mask[added_edges_indices] = False
