@@ -13,6 +13,7 @@ import torch.nn as nn
 from models.GraphMixer import GraphMixer
 from models.TGAT import TGAT
 from models.modules import MergeLayer
+from models.DyGFormer import DyGFormer
 
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes, create_optimizer
 from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
@@ -34,7 +35,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '0', '--test_laser_snapshots', '100'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'CanParl', , '--drop_node_prob', '1', '--laser_snapshots', '0', '--test_laser_snapshots', '100'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -87,9 +88,11 @@ def main():
             dynamic_backbone = GraphMixer(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
                                           time_feat_dim=args.time_feat_dim, num_tokens=args.num_neighbors, num_layers=args.num_layers, dropout=args.dropout, device=args.device)
             
-        elif args.model_name == 'TGAT':
-            dynamic_backbone = TGAT(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
-                                    time_feat_dim=args.time_feat_dim, num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout, device=args.device)
+        elif args.model_name == 'DyGFormer':
+            dynamic_backbone = DyGFormer(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
+                                         time_feat_dim=args.time_feat_dim, channel_embedding_dim=args.channel_embedding_dim, patch_size=args.patch_size,
+                                         num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout,
+                                         max_input_sequence_length=args.max_input_sequence_length, device=args.device)
         
         else:
             raise ValueError(f"Wrong value for model_name {args.model_name}!")
@@ -266,22 +269,20 @@ def main():
                                                                             num_neighbors=args.num_neighbors,
                                                                             time_gap=args.time_gap)
                 
-                elif args.model_name in ['TGAT']:
+                elif args.model_name in ['DyGFormer']:
                     # get temporal embedding of source and destination nodes
                     # two Tensors, with shape (batch_size, node_feat_dim)
                     batch_src_node_embeddings, batch_dst_node_embeddings = \
                         model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_src_node_ids,
                                                                           dst_node_ids=batch_dst_node_ids,
-                                                                          node_interact_times=batch_node_interact_times,
-                                                                          num_neighbors=args.num_neighbors)
+                                                                          node_interact_times=batch_node_interact_times)
 
                     # get temporal embedding of negative source and negative destination nodes
                     # two Tensors, with shape (batch_size, node_feat_dim)
                     batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
                         model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                           dst_node_ids=batch_neg_dst_node_ids,
-                                                                          node_interact_times=batch_node_interact_times,
-                                                                          num_neighbors=args.num_neighbors)
+                                                                          node_interact_times=batch_neg_timestamps)
                 
 
                 # get positive and negative probabilities, shape (batch_size, )
