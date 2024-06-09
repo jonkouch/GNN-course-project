@@ -8,6 +8,7 @@ import shutil
 import json
 import torch
 import torch.nn as nn
+import argparse
 
 
 from models.GraphMixer import GraphMixer
@@ -34,8 +35,14 @@ def main():
 
     warnings.filterwarnings('ignore')
 
+    parser = argparse.ArgumentParser(description='Training link prediction model.')
+    parser.add_argument('--model_name', type=str, default='GraphMixer', help='Name of the model to use.')
+    parser.add_argument('--filter_loss', type=bool, default=False, help='Whether to filter out high-focus nodes and edges.')
+    parser.add_argument('--drop_node_prob', type=float, default=0.5, help='Probability of dropping high-focus nodes and edges.')
+
+
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'DyGFormer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'CanParl', '--filter_loss', 'True', '--drop_node_prob', '0.5', '--laser_snapshots', '3', '--test_laser_snapshots', '5'])
+    args = get_link_prediction_args(args=['--model_name', 'DyGFormer', '--num_epochs', '20', '--num_runs', '5', '--dataset_name', 'lastfm', '--filter_loss', 'True', '--drop_node_prob', '0.5', '--laser_snapshots', '3', '--test_laser_snapshots', '5'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
