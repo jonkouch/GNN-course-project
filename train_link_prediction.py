@@ -35,8 +35,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'lastfm', '--filter_loss', 'False',
-                                           '--drop_node_prob', '1', '--laser_snapshots', '3', '--test_laser_snapshots', '0'])
+    args = get_link_prediction_args(args=['--model_name', 'DyGFormer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'CanParl', '--filter_loss', 'True', '--drop_node_prob', '0.5', '--laser_snapshots', '3', '--test_laser_snapshots', '5'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -203,7 +202,12 @@ def main():
                         else:
                             combinations = np.concatenate((combinations, rewirings[i]), axis=0)
 
-                    timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                    high, low = batch_node_interact_times[0], batch_node_interact_times[-1]
+
+                    if high - low > 0:
+                        timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                    else:
+                        timestamps = high * np.ones(combinations.shape[0])
                     to_add = np.random.rand(combinations.shape[0]) < len(batch_node_interact_times)/combinations.shape[0]
                     combinations = combinations[to_add]
                     timestamps = timestamps[to_add]
@@ -300,10 +304,10 @@ def main():
 
                 if args.filter_loss:
                     # Identify and zero out high-focus nodes and edges
-                    src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings[loss_mask], retain_graph=True)[0]
+                    src_node_gradients = torch.autograd.grad(loss, batch_src_node_embeddings, retain_graph=True)[0][loss_mask]
                     src_node_gradient_magnitudes = torch.norm(src_node_gradients, dim=1).cpu().numpy()
 
-                    dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings[loss_mask], retain_graph=True)[0]
+                    dst_node_gradients = torch.autograd.grad(loss, batch_dst_node_embeddings, retain_graph=True)[0][loss_mask]
                     dst_node_gradient_magnitudes = torch.norm(dst_node_gradients, dim=1).cpu().numpy()
 
                     negative_src_node_gradients = torch.autograd.grad(loss, batch_neg_src_node_embeddings, retain_graph=True)[0]
@@ -610,29 +614,46 @@ def main():
 
     # Using tqdm to print the average metrics with standard deviation for runs
     metrics_summary = []
+    final_dict = {}
     for metric_name in val_metric_all_runs[0].keys():
         avg = np.mean([val_metric_single_run[metric_name] for val_metric_single_run in val_metric_all_runs])
         std = np.std([val_metric_single_run[metric_name] for val_metric_single_run in val_metric_all_runs], ddof=1)
         metrics_summary.append(f'Validate {metric_name}: {avg:.4f} ± {std:.4f}')
+        final_dict[f'Validate {metric_name}'] = f'{avg:.4f} +- {std:.4f}'
 
     for metric_name in new_node_val_metric_all_runs[0].keys():
         avg = np.mean([new_node_val_metric_single_run[metric_name] for new_node_val_metric_single_run in new_node_val_metric_all_runs])
         std = np.std([new_node_val_metric_single_run[metric_name] for new_node_val_metric_single_run in new_node_val_metric_all_runs], ddof=1)
         metrics_summary.append(f'New Node Validate {metric_name}: {avg:.4f} ± {std:.4f}')
+        final_dict[f'New Node Validate {metric_name}'] = f'{avg:.4f} +- {std:.4f}'
 
     for metric_name in test_metric_all_runs[0].keys():
         avg = np.mean([test_metric_single_run[metric_name] for test_metric_single_run in test_metric_all_runs])
         std = np.std([test_metric_single_run[metric_name] for test_metric_single_run in test_metric_all_runs], ddof=1)
         metrics_summary.append(f'Test {metric_name}: {avg:.4f} ± {std:.4f}')
+        final_dict[f'Test {metric_name}'] = f'{avg:.4f} +- {std:.4f}'
 
     for metric_name in new_node_test_metric_all_runs[0].keys():
         avg = np.mean([new_node_test_metric_single_run[metric_name] for new_node_test_metric_single_run in new_node_test_metric_all_runs])
         std = np.std([new_node_test_metric_single_run[metric_name] for new_node_test_metric_single_run in new_node_test_metric_all_runs], ddof=1)
         metrics_summary.append(f'New Node Test {metric_name}: {avg:.4f} ± {std:.4f}')
+        final_dict[f'New Node Test {metric_name}'] = f'{avg:.4f} +- {std:.4f}'
 
     # Print all metrics using tqdm for a nice output
     for line in tqdm(metrics_summary, desc="Metric Summaries"):
         tqdm.write(line)
+
+    save_path = f"./saved_results/{args.model_name}/{args.dataset_name}/{args.model_name}"
+
+    if args.filter_loss:
+        save_path += '_filtered_' + str(args.drop_node_prob)
+    if args.laser_snapshots:
+        save_path += '_laser_' + str(args.laser_snapshots)
+    if args.test_laser_snapshots:
+        save_path += '_test_laser_' + str(args.test_laser_snapshots)
+
+    json.dump(final_dict, open(save_path + '.json', 'w'), indent=4)
+    
 
 
 if __name__ == "__main__":

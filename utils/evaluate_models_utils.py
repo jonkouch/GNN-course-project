@@ -85,7 +85,15 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                     else:
                         combinations = np.concatenate((combinations, rewirings[i]), axis=0)
 
-                timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+
+                    
+                high, low = batch_node_interact_times[0], batch_node_interact_times[-1]
+
+                if high - low > 0:
+                    timestamps = np.random.randint(batch_node_interact_times[0], batch_node_interact_times[-1], size=combinations.shape[0])
+                else:
+                    timestamps = high * np.ones(combinations.shape[0])
+
                 to_add = np.random.rand(combinations.shape[0]) < len(batch_node_interact_times)/combinations.shape[0]
                 combinations = combinations[to_add]
                 timestamps = timestamps[to_add]
@@ -208,6 +216,8 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
             
 
             # get positive and negative probabilities, shape (batch_size, )
+            if lasers is None:
+                pred_mask = torch.tensor([True] * len(batch_src_node_ids), dtype=torch.bool)
             positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()[pred_mask]
             negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 

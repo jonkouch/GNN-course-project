@@ -59,7 +59,12 @@ def get_link_prediction_args(args=None):
 
 
     try:
+        if args[args.index('--filter_loss') + 1] == 'True':
+            filter = True
+        else:
+            filter = False
         args = parser.parse_args(args=args)
+        args.filter_loss = filter
         args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
         # args.device = 'cpu'
     except:
