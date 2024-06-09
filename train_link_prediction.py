@@ -34,7 +34,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '10', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '0', '--test_laser_snapshots', '100'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1', '--dataset_name', 'lastfm', '--drop_node_prob', '1', '--laser_snapshots', '0', '--test_laser_snapshots', '100'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
