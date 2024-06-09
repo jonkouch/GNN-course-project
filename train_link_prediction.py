@@ -35,7 +35,8 @@ def main():
     warnings.filterwarnings('ignore')
 
     # get arguments
-    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'CanParl', , '--drop_node_prob', '1', '--laser_snapshots', '0', '--test_laser_snapshots', '100'])
+    args = get_link_prediction_args(args=['--model_name', 'GraphMixer', '--num_epochs', '1', '--num_runs', '5', '--dataset_name', 'lastfm', '--filter_loss', 'False',
+                                           '--drop_node_prob', '1', '--laser_snapshots', '3', '--test_laser_snapshots', '0'])
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -191,8 +192,6 @@ def main():
                         rewirings = old_rewirings
 
 
-                    num_rewirings = 3
-                    batch_edges = np.vstack((batch_src_node_ids, batch_dst_node_ids)).T
                     combinations = None
                     for i in range(len(rewirings)):
                         if len(rewirings[i]) == 0:
