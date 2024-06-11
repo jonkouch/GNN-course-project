@@ -1,0 +1,18 @@
+{
+    "validate metrics": {
+        "average_precision": "0.7211",
+        "roc_auc": "0.6992"
+    },
+    "new node validate metrics": {
+        "average_precision": "0.7679",
+        "roc_auc": "0.7415"
+    },
+    "test metrics": {
+        "average_precision": "0.7580",
+        "roc_auc": "0.7403"
+    },
+    "new node test metrics": {
+        "average_precision": "0.8232",
+        "roc_auc": "0.8087"
+    }
+}
