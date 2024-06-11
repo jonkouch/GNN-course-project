@@ -55,7 +55,7 @@ def main():
 
     if args.laser_snapshots:
         if args.dataset_name == 'CanParl':
-            args.laser_snapshots = 11
+            args.laser_snapshots = 22
         elif args.dataset_name == 'wikipedia':
             args.laser_snapshots = 20
         elif args.dataset_name == 'lastfm':
@@ -63,7 +63,7 @@ def main():
 
     if args.test_laser_snapshots:
         if args.dataset_name == 'CanParl':
-            args.test_laser_snapshots = 4
+            args.test_laser_snapshots = 8
         elif args.dataset_name == 'wikipedia':
             args.test_laser_snapshots = 9
         elif args.dataset_name == 'lastfm':
@@ -695,12 +695,9 @@ def main():
 
     if args.filter_loss:
         save_path += f'_filtered_{args.drop_node_prob}'
-        save_path += f'_filtered_{args.drop_node_prob}'
     if args.laser_snapshots:
         save_path += f'_laser_{args.laser_snapshots}'
-        save_path += f'_laser_{args.laser_snapshots}'
     if args.test_laser_snapshots:
-        save_path += f'_test_laser_{args.test_laser_snapshots}'
         save_path += f'_test_laser_{args.test_laser_snapshots}'
 
     json.dump(final_dict, open(save_path + '.json', 'w'), indent=4)
