@@ -7,3 +7,5 @@ __pycache__/
 *.pkl
 *.bin
 *.pth
+*_.json
+*.txt
