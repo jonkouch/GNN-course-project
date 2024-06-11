@@ -36,7 +36,7 @@ def main():
     warnings.filterwarnings('ignore')
 
     parser = argparse.ArgumentParser(description='Training link prediction model.')
-    parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
+    parser.add_argument('--filter_loss', type=int, default=0, help='Whether to filter out high-focus nodes and edges.')
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
     parser.add_argument('--laser_snapshots', type=int, default=0, help='Number of snapshots to use for laser.')
     parser.add_argument('--test_laser_snapshots', type=int, default=0, help='Number of snapshots to use for testing laser.')
