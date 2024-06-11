@@ -38,6 +38,8 @@ def main():
     parser = argparse.ArgumentParser(description='Training link prediction model.')
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
     parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
+    parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
+    parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
     parser.add_argument('--laser_snapshots', type=int, default=0, help='Number of snapshots to use for laser.')
     parser.add_argument('--test_laser_snapshots', type=int, default=0, help='Number of snapshots to use for testing laser.')
     parser.add_argument('--dataset_name', type=str, default='CanParl', help='Name of the dataset to use.')       
@@ -616,11 +618,11 @@ def main():
 
         save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
         if args.filter_loss:
-            save_result_folder += f'/filtered_{args.drop_node_prob}'
+            save_result_folder += f'_filtered_{args.drop_node_prob}'
         if args.laser_snapshots:
-            save_result_folder += f'/laser_{args.laser_snapshots}'
+            save_result_folder += f'_laser_{args.laser_snapshots}'
         if args.test_laser_snapshots:
-            save_result_folder += f'/test_laser_{args.test_laser_snapshots}'
+            save_result_folder += f'_test_laser_{args.test_laser_snapshots}'
 
         os.makedirs(save_result_folder, exist_ok=True)
         save_result_path = os.path.join(save_result_folder, f"{args.save_model_name}.json")
@@ -643,11 +645,11 @@ def main():
     # Define the folder path and ensure it exists
     save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
     if args.filter_loss:
-        save_result_folder += f'/filtered_{args.drop_node_prob}'
+        save_result_folder += f'_filtered_{args.drop_node_prob}'
     if args.laser_snapshots:
-        save_result_folder += f'/laser_{args.laser_snapshots}'
+        save_result_folder += f'_laser_{args.laser_snapshots}'
     if args.test_laser_snapshots:
-        save_result_folder += f'/test_laser_{args.test_laser_snapshots}'    
+        save_result_folder += f'_test_laser_{args.test_laser_snapshots}'    
 
     os.makedirs(save_result_folder, exist_ok=True)
     save_result_path = os.path.join(save_result_folder, f"{args.save_model_name}.json")
@@ -691,9 +693,12 @@ def main():
 
     if args.filter_loss:
         save_path += f'_filtered_{args.drop_node_prob}'
+        save_path += f'_filtered_{args.drop_node_prob}'
     if args.laser_snapshots:
         save_path += f'_laser_{args.laser_snapshots}'
+        save_path += f'_laser_{args.laser_snapshots}'
     if args.test_laser_snapshots:
+        save_path += f'_test_laser_{args.test_laser_snapshots}'
         save_path += f'_test_laser_{args.test_laser_snapshots}'
 
     json.dump(final_dict, open(save_path + '.json', 'w'), indent=4)
