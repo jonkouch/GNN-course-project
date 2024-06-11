@@ -38,8 +38,6 @@ def main():
     parser = argparse.ArgumentParser(description='Training link prediction model.')
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
     parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
-    parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
-    parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
     parser.add_argument('--laser_snapshots', type=int, default=0, help='Number of snapshots to use for laser.')
     parser.add_argument('--test_laser_snapshots', type=int, default=0, help='Number of snapshots to use for testing laser.')
     parser.add_argument('--dataset_name', type=str, default='CanParl', help='Name of the dataset to use.')       
@@ -60,12 +58,16 @@ def main():
             args.laser_snapshots = 11
         elif args.dataset_name == 'wikipedia':
             args.laser_snapshots = 20
+        elif args.dataset_name == 'lastfm':
+            args.laser_snapshots = 360
 
     if args.test_laser_snapshots:
         if args.dataset_name == 'CanParl':
             args.test_laser_snapshots = 4
         elif args.dataset_name == 'wikipedia':
             args.test_laser_snapshots = 9
+        elif args.dataset_name == 'lastfm':
+            args.test_laser_snapshots = 70
     
     print(f'running with drop_nodes = {args.filter_loss}, prob = {args.drop_node_prob}')
     print(f'add_focus_edges = {args.add_focus_edges}, add_prob = {args.add_probability}')
@@ -102,7 +104,7 @@ def main():
 
     val_metric_all_runs, new_node_val_metric_all_runs, test_metric_all_runs, new_node_test_metric_all_runs = [], [], [], []
 
-    for run in range(args.num_runs):
+    for run in range(3, 5):
 
         set_random_seed(seed=run)
 
