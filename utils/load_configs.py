@@ -49,6 +49,7 @@ def get_link_prediction_args(args=None):
     parser.add_argument('--load_best_configs', action='store_true', default=False, help='whether to load the best configurations')
 
     parser.add_argument('--filter_loss', type=int, default=0, help='whether to filter the loss')
+    parser.add_argument('--filter_loss', type=int, default=0, help='whether to filter the loss')
     parser.add_argument('--drop_node_prob', type=float, default=0.5, help='probability to drop a node with high gradient')
     
     parser.add_argument('--add_focus_edges', type=bool, default=False, help='whether to add focus edges')
@@ -63,9 +64,10 @@ def get_link_prediction_args(args=None):
         args.filter_loss = bool(args.filter_loss)
         args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
         # args.device = 'cpu'
-    except:
-        parser.print_help()
-        sys.exit()
+    # except Exception as e:
+    #     parser.print_help()
+    #     print(e)
+    #     sys.exit()
 
 
     # if args.load_best_configs:
