@@ -58,9 +58,9 @@ def get_link_prediction_args(args=None):
     parser.add_argument('--test_laser_snapshots', type=int, default=0, help='How many iterations of our dynamic LASER we want to do')
 
 
-    try:
-        args = parser.parse_args(args=args)
-        args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
+    # try:
+    args = parser.parse_args(args=args)
+    args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
         # args.device = 'cpu'
     # except Exception as e:
     #     parser.print_help()
