@@ -104,7 +104,7 @@ def main():
 
     val_metric_all_runs, new_node_val_metric_all_runs, test_metric_all_runs, new_node_test_metric_all_runs = [], [], [], []
 
-    for run in range(4, 5):
+    for run in range(3):
 
         set_random_seed(seed=run)
 
