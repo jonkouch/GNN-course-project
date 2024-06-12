@@ -104,7 +104,7 @@ def main():
 
     val_metric_all_runs, new_node_val_metric_all_runs, test_metric_all_runs, new_node_test_metric_all_runs = [], [], [], []
 
-    for run in range(3, 5):
+    for run in range(2, 3):
 
         set_random_seed(seed=run)
 
@@ -618,7 +618,7 @@ def main():
 
         result_json = json.dumps(result_json, indent=4)
 
-        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}"
+        save_result_folder = f"./saved_results/{args.model_name}/{args.dataset_name}/temp"
         if args.filter_loss:
             save_result_folder += f'_filtered_{args.drop_node_prob}'
         if args.laser_snapshots:
