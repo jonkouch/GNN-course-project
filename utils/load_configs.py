@@ -62,10 +62,10 @@ def get_link_prediction_args(args=None):
         args = parser.parse_args(args=args)
         args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() and args.gpu >= 0 else 'cpu'
         # args.device = 'cpu'
-    except Exception as e:
-        parser.print_help()
-        print(e)
-        sys.exit()
+    # except Exception as e:
+    #     parser.print_help()
+    #     print(e)
+    #     sys.exit()
 
 
     # if args.load_best_configs:
