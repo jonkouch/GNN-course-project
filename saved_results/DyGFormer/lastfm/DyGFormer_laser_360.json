@@ -1,0 +1,10 @@
+{
+    "Validate average_precision": "0.8768 +- 0.0002",
+    "Validate roc_auc": "0.8527 +- 0.0001",
+    "New Node Validate average_precision": "0.8832 +- 0.0001",
+    "New Node Validate roc_auc": "0.8585 +- 0.0002",
+    "Test average_precision": "0.8891 +- 0.0004",
+    "Test roc_auc": "0.8685 +- 0.0002",
+    "New Node Test average_precision": "0.9123 +- 0.0008",
+    "New Node Test roc_auc": "0.8961 +- 0.0003"
+}
