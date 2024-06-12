@@ -51,6 +51,7 @@ def main():
 
     args = get_link_prediction_args(args=['--model_name', arg['model_name'], '--num_epochs', '10', '--num_runs', '5', '--dataset_name', arg['dataset_name'],
                                            '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '1',
+                                           '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '1',
                                              '--laser_snapshots', str(arg['laser_snapshots']), '--test_laser_snapshots', str(arg['test_laser_snapshots'])])
 
     if args.laser_snapshots:
