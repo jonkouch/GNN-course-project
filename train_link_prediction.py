@@ -51,7 +51,6 @@ def main():
 
     args = get_link_prediction_args(args=['--model_name', arg['model_name'], '--num_epochs', '10', '--num_runs', '5', '--dataset_name', arg['dataset_name'],
                                            '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '1',
-                                           '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '1',
                                              '--laser_snapshots', str(arg['laser_snapshots']), '--test_laser_snapshots', str(arg['test_laser_snapshots'])])
 
     if args.laser_snapshots:
@@ -105,7 +104,7 @@ def main():
 
     val_metric_all_runs, new_node_val_metric_all_runs, test_metric_all_runs, new_node_test_metric_all_runs = [], [], [], []
 
-    for run in range(3, 4):
+    for run in range(3):
 
         set_random_seed(seed=run)
 
