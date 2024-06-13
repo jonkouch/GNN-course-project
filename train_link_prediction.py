@@ -36,11 +36,11 @@ def main():
     warnings.filterwarnings('ignore')
 
     parser = argparse.ArgumentParser(description='Training link prediction model.')
-    parser.add_argument('--model_name', type=str, default='DyGFormer', help='Name of the model to use.')
-    parser.add_argument('--filter_loss', type=int, default=1, help='Whether to filter out high-focus nodes and edges.')
+    parser.add_argument('--model_name', type=str, default='GraphMixer', help='Name of the model to use.')
+    parser.add_argument('--filter_loss', type=int, default=0, help='Whether to filter out high-focus nodes and edges.')
     parser.add_argument('--laser_snapshots', type=int, default=0, help='Number of snapshots to use for laser.')
     parser.add_argument('--test_laser_snapshots', type=int, default=0, help='Number of snapshots to use for testing laser.')
-    parser.add_argument('--dataset_name', type=str, default='lastfm', help='Name of the dataset to use.')       
+    parser.add_argument('--dataset_name', type=str, default='CanParl', help='Name of the dataset to use.')       
 
     arg = parser.parse_args()
     arg = vars(arg)
@@ -49,8 +49,8 @@ def main():
 
     # get arguments
 
-    args = get_link_prediction_args(args=['--model_name', arg['model_name'], '--num_epochs', '10', '--num_runs', '5', '--dataset_name', arg['dataset_name'],
-                                           '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '1',
+    args = get_link_prediction_args(args=['--model_name', arg['model_name'], '--num_epochs', '10', '--num_runs', '1', '--dataset_name', arg['dataset_name'],
+                                           '--filter_loss', str(arg['filter_loss']), '--drop_node_prob', '0.5', '--test_interval_epochs', '1', 
                                              '--laser_snapshots', str(arg['laser_snapshots']), '--test_laser_snapshots', str(arg['test_laser_snapshots'])])
 
     if args.laser_snapshots:
@@ -104,7 +104,7 @@ def main():
 
     val_metric_all_runs, new_node_val_metric_all_runs, test_metric_all_runs, new_node_test_metric_all_runs = [], [], [], []
 
-    for run in range(2, 3):
+    for run in range(args.num_runs):
 
         set_random_seed(seed=run)
 
@@ -156,6 +156,11 @@ def main():
         lasers = []
         val_lasers = []
         test_lasers = []
+
+
+        losses = []
+        accs = []
+
         for i in range(args.laser_snapshots):
             G = nx.Graph()
             edges_in_time_window = np.vstack([train_data.src_node_ids[math.floor(i/args.laser_snapshots * len(train_data.src_node_ids)): math.floor((i+1)/args.laser_snapshots * len(train_data.src_node_ids))],
@@ -406,6 +411,7 @@ def main():
                     optimizer.zero_grad()
                     filtered_loss.backward()
                     optimizer.step()
+                    loss = filtered_loss
 
                 
                 else:
@@ -417,7 +423,7 @@ def main():
                     optimizer.step()
 
                 train_idx_data_loader_tqdm.set_description(f'Epoch: {epoch + 1}, train for the {batch_idx + 1}-th batch, train loss: {loss.item()}')
-
+                losses.append(loss.item())
 
             if not args.test_laser_snapshots:
                 test_lasers = None
@@ -500,6 +506,8 @@ def main():
                 test_metrics_info = ""
                 for metric_name in test_metrics[0].keys():
                     test_metrics_info += f'Test {metric_name}: {np.mean([test_metric[metric_name] for test_metric in test_metrics]):.4f}, '
+                    if metric_name == 'average_precision':
+                        accs.append(np.mean([test_metric[metric_name] for test_metric in test_metrics]))
                 for metric_name in new_node_test_metrics[0].keys():
                     test_metrics_info += f'New Node Test {metric_name}: {np.mean([new_node_test_metric[metric_name] for new_node_test_metric in new_node_test_metrics]):.4f}, '
 
@@ -508,6 +516,7 @@ def main():
                     test_metrics_info = test_metrics_info[:-2]
 
                 tqdm.write(test_metrics_info)
+                
 
 
             # select the best model based on all the validate metrics
@@ -702,6 +711,10 @@ def main():
 
     json.dump(final_dict, open(save_path + '.json', 'w'), indent=4)
     
+
+    np.save(f"./plots/{args.model_name}_{args.dataset_name}_losses_train_laser.npy", losses)
+    np.save(f"./plots/{args.model_name}_{args.dataset_name}_accs_train_laser.npy", accs)
+
 
 
 if __name__ == "__main__":

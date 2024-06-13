@@ -1,10 +1,10 @@
 {
-    "Validate average_precision": "0.6287 +- 0.0212",
-    "Validate roc_auc": "0.6618 +- 0.0346",
-    "New Node Validate average_precision": "0.5052 +- 0.0455",
-    "New Node Validate roc_auc": "0.4564 +- 0.0749",
-    "Test average_precision": "0.6953 +- 0.0150",
-    "Test roc_auc": "0.7777 +- 0.0134",
-    "New Node Test average_precision": "0.5171 +- 0.0156",
-    "New Node Test roc_auc": "0.4983 +- 0.0205"
+    "Validate average_precision": "0.6265 +- nan",
+    "Validate roc_auc": "0.6768 +- nan",
+    "New Node Validate average_precision": "0.5082 +- nan",
+    "New Node Validate roc_auc": "0.4687 +- nan",
+    "Test average_precision": "0.6731 +- nan",
+    "Test roc_auc": "0.7616 +- nan",
+    "New Node Test average_precision": "0.5219 +- nan",
+    "New Node Test roc_auc": "0.4882 +- nan"
 }
